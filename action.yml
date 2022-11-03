@@ -47,9 +47,11 @@ runs:
 
           echo "Compressing..."
 
+          filename="gzipped/${signature// /_}.ini"
+
           mkdir gzipped
           gzip --best --keep ${INI_PATH}
-          mv ${INI_PATH}.gz gzipped/${signature}.ini
+          mv ${INI_PATH}.gz ${filename}
 
           args=()
           args+="--silent"
@@ -79,7 +81,7 @@ runs:
           args+="--header 'Authorization: Bearer ${token}'"
           args+="--form 'signature=\"${signature}\"'"
           args+="--form 'ecosystem=\"${ECOSYSTEM}\"'"
-          args+="--form 'file=@"gzipped/${signature}.ini"'"
+          args+="--form 'file=@"${filename}"'"
 
           if [[ $found == 0 ]]; then
             echo "Not found"
