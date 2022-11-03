@@ -53,52 +53,45 @@ runs:
           gzip --best --keep ${INI_PATH}
           mv ${INI_PATH}.gz ${filename}
 
-          args=()
-          args+="--silent"
-          args+=${auth_url}
-          args+="--header 'Content-Type: application/json'"
-          args+="--data-raw '{\"identity\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}'"
-
           echo "Authenticating..."
 
-          token=$(echo $args | xargs curl | jq -r '.token')
+          token=$(curl --silent \
+            $auth_url \
+            --header 'Content-Type: application/json' \
+            --data-raw "{\"identity\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}" | jq -r '.token')
 
           echo "Checking if file already exists..."
 
-          args=()
-          args+="--silent"
-          args+="--get"
-          args+="${upload_url}"
-          args+="--header 'Authorization: Bearer ${token}'"
-          args+="--data-urlencode 'filter=signature=\"${signature}\"'"
-
-          response=$(echo $args | xargs curl)
+          response=$(curl --silent \
+            $upload_url \
+            --get \
+            --header "Authorization: Bearer ${token}" \
+            --data-urlencode "filter=signature=\"${signature}\"")
 
           found=$(echo $response | jq '.totalItems')
-
-          args=()
-          args+="--silent"
-          args+="--header 'Authorization: Bearer ${token}'"
-          args+="--form 'signature=\"${signature}\"'"
-          args+="--form 'ecosystem=\"${ECOSYSTEM}\"'"
-          args+="--form 'file=@"${filename}"'"
 
           if [[ $found == 0 ]]; then
             echo "Not found"
             echo "Trying to create a new record..."
 
-            args+="${upload_url}"
-            args+="--request POST"
-
-            response=$(echo $args | xargs curl)
+            response=$(curl --silent \
+              $upload_url \
+              --request POST \
+              --header "Authorization: Bearer ${token}" \
+              --form "signature=\"${signature}\"" \
+              --form "ecosystem=\"${ECOSYSTEM}\"" \
+              --form file=@"${filename}")
           else
             echo "Record already exists, trying to update..."
             id=$(echo $response | jq -r '.items[0].id')
 
-            args+="${upload_url}/${id}"
-            args+="--request PATCH"
-
-            response=$(echo $args | xargs curl)
+            response=$(curl --silent \
+              ${upload_url}/${id} \
+              --request PATCH \
+              --header "Authorization: Bearer ${token}" \
+              --form "signature=\"${signature}\"" \
+              --form "ecosystem=\"${ECOSYSTEM}\"" \
+              --form file=@"${filename}")
           fi
 
           error=$(echo $response | jq -r '.code')
