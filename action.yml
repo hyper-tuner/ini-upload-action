@@ -1,0 +1,111 @@
+name: HyperTuner INI upload
+description: GitHub Action for INI upload.
+author: Piotr Rogowski <piotr.rogowski0@gmail.com>
+branding:
+  icon: cpu
+  color: blue
+inputs:
+  api-url:
+    description: 'HyperTuner API URL'
+    required: true
+  username:
+    description: 'HyperTuner admin username'
+    required: true
+
+  password:
+    description: 'HyperTuner admin password'
+    required: true
+
+  path:
+    description: 'Path to INI file'
+    required: true
+
+  ecosystem:
+    description: 'Either "speeduino" or "rusefi"'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Upload
+      shell: bash
+      run: |
+          API_URL=${{ inputs.api-url }}
+          USERNAME=${{ inputs.username }}
+          PASSWORD=${{ inputs.password }}
+          INI_PATH=${{ inputs.path }}
+          ECOSYSTEM=${{ inputs.ecosystem }}
+
+          upload_url="${API_URL}/api/collections/iniFiles/records"
+          auth_url="${API_URL}/api/admins/auth-with-password"
+
+          echo "Parsing signature..."
+
+          signature=$(awk -F "=" '/signature/ {print $2}' ${INI_PATH} | tr -d '"' | xargs)
+
+          echo "Signature: ${signature}"
+
+          echo "Compressing..."
+
+          mkdir gzipped
+          gzip --best --keep ${INI_PATH}
+          mv ${INI_PATH}.gz gzipped/${signature}.ini
+
+          args=()
+          args+="--silent"
+          args+=${auth_url}
+          args+="--header 'Content-Type: application/json'"
+          args+="--data-raw '{\"identity\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}'"
+
+          echo "Authenticating..."
+
+          token=$(echo $args | xargs curl | jq -r '.token')
+
+          echo "Checking if file already exists..."
+
+          args=()
+          args+="--silent"
+          args+="--get"
+          args+="${upload_url}"
+          args+="--header 'Authorization: Bearer ${token}'"
+          args+="--data-urlencode 'filter=signature=\"${signature}\"'"
+
+          response=$(echo $args | xargs curl)
+
+          found=$(echo $response | jq '.totalItems')
+
+          args=()
+          args+="--silent"
+          args+="--header 'Authorization: Bearer ${token}'"
+          args+="--form 'signature=\"${signature}\"'"
+          args+="--form 'ecosystem=\"${ECOSYSTEM}\"'"
+          args+="--form 'file=@"gzipped/${signature}.ini"'"
+
+          if [[ $found == 0 ]]; then
+            echo "Not found"
+            echo "Trying to create a new record..."
+
+            args+="${upload_url}"
+            args+="--request POST"
+
+            response=$(echo $args | xargs curl)
+          else
+            echo "Record already exists, trying to update..."
+            id=$(echo $response | jq -r '.items[0].id')
+
+            args+="${upload_url}/${id}"
+            args+="--request PATCH"
+
+            response=$(echo $args | xargs curl)
+          fi
+
+          error=$(echo $response | jq -r '.code')
+
+          if [ -z "$error" ]
+          then
+            echo "Error: $response"
+            exit 1
+          else
+            echo "Success"
+            exit 0
+          fi
