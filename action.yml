@@ -41,7 +41,7 @@ runs:
 
           echo "Parsing signature..."
 
-          signature=$(awk -F "=" '/signature/ {print $2}' ${INI_PATH} | tr -d '"' | xargs)
+          signature=$(awk -F "=" '/signature/ {print $2}' ${INI_PATH} | tr -d '"' | cut -f1 -d";" | xargs)
 
           echo "Signature: ${signature}"
 
